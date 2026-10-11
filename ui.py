@@ -7,7 +7,7 @@ import controller as ctl
 from controller import CompilerController
 
 APP_TITLE = "CMSC 129 - PE02 Lexical Analyzer"
-SOURCE_TYPES = [("IO source files", "*" + file_io.SOURCE_EXT), ("All files", "*.*")]
+SOURCE_TYPES = [("IOL source files", "*" + file_io.SOURCE_EXT), ("All files", "*.*")]
 TOKEN_TYPES = [("Token files", "*" + file_io.TOKEN_EXT), ("All files", "*.*")]
 MONO = ("Courier", 12)
 
@@ -59,9 +59,14 @@ class CompilerUI:
         horizontal = ttk.PanedWindow(vertical, orient=tk.HORIZONTAL)
         vertical.add(horizontal, weight=3)
 
-        editor_frame = ttk.LabelFrame(horizontal, text="Editor", padding=2)
+        self.tabs = ttk.Notebook(horizontal)
+        editor_frame = ttk.Frame(self.tabs, padding=2)
         self.editor = self._scrolled_text(editor_frame, undo=True)
-        horizontal.add(editor_frame, weight=3)
+        self.tabs.add(editor_frame, text="Editor")
+        self.tokens_frame = ttk.Frame(self.tabs, padding=2)
+        self.tokens_view = self._scrolled_text(self.tokens_frame, state=tk.DISABLED)
+        self.tabs.add(self.tokens_frame, text="Tokenized Code")
+        horizontal.add(self.tabs, weight=3)
 
         table_frame = ttk.LabelFrame(horizontal, text="Table of Variables", padding=2)
         self.variable_table = ttk.Treeview(
@@ -132,6 +137,18 @@ class CompilerUI:
         self.console.delete("1.0", tk.END)
         self.console.configure(state=tk.DISABLED)
 
+    def _set_tokens_view(self, content: str) -> None:
+        self.tokens_view.configure(state=tk.NORMAL)
+        self.tokens_view.delete("1.0", tk.END)
+        self.tokens_view.insert("1.0", content)
+        self.tokens_view.configure(state=tk.DISABLED)
+
+    def _reset_outputs(self) -> None:
+        self._clear_console()
+        self._set_variables([])
+        self._set_tokens_view("")
+        self.tabs.select(0)
+
     def _set_variables(self, variables) -> None:
         self.variable_table.delete(*self.variable_table.get_children())
         for name, var_type in variables:
@@ -148,15 +165,16 @@ class CompilerUI:
         if not self._confirm_discard():
             return
         self._set_editor(self.controller.new_file())
-        self._clear_console()
-        self._set_variables([])
+        self._reset_outputs()
         self._refresh_title()
         self._log("New file created.")
 
     def open_file(self) -> None:
         if not self._confirm_discard():
             return
-        path = filedialog.askopenfilename(title="Open .io file", filetypes=SOURCE_TYPES)
+        path = filedialog.askopenfilename(
+            title="Open .iol file", filetypes=SOURCE_TYPES
+        )
         if not path:
             return
         try:
@@ -165,8 +183,7 @@ class CompilerUI:
             messagebox.showerror(ctl.OPEN_FILE, str(e))
             return
         self._set_editor(source)
-        self._clear_console()
-        self._set_variables([])
+        self._reset_outputs()
         self._refresh_title()
         self._log(f"Opened {path}")
 
@@ -174,7 +191,7 @@ class CompilerUI:
         path = self.controller.source_path
         if path is None:
             path = filedialog.asksaveasfilename(
-                title="Save .io file",
+                title="Save .iol file",
                 defaultextension=file_io.SOURCE_EXT,
                 filetypes=SOURCE_TYPES,
             )
@@ -210,12 +227,10 @@ class CompilerUI:
         self._log(f"Compiled {len(result.tokens)} token(s).")
         for error in result.errors:
             self._log(error, "error")
-        if result.errors:
-            self._log(f"{len(result.errors)} lexical error(s) found.", "error")
-        else:
-            self._log("No lexical errors found.", "ok")
+        self._log(result.summary, "error" if result.has_errors else "ok")
         self._log(f"Tokenized code saved to {result.tkn_path}")
         self._set_variables(result.variables)
+        self._set_tokens_view(result.tokenized_code)
 
     def show_tokenized_code(self) -> None:
         try:
@@ -228,16 +243,8 @@ class CompilerUI:
                 ctl.SHOW_TOKENIZED_CODE, "Compile the code first to generate tokens."
             )
             return
-
-        window = tk.Toplevel(self.root)
-        title = os.path.basename(self.controller.tkn_path or "Tokenized Code")
-        window.title(title)
-        window.geometry("600x500")
-        frame = ttk.Frame(window, padding=4)
-        frame.pack(fill=tk.BOTH, expand=True)
-        text = self._scrolled_text(frame)
-        text.insert("1.0", content)
-        text.configure(state=tk.DISABLED)
+        self._set_tokens_view(content)
+        self.tabs.select(self.tokens_frame)
 
     def exit_app(self) -> None:
         if self.editor.edit_modified():

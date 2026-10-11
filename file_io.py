@@ -1,6 +1,6 @@
 import os
 
-SOURCE_EXT = ".io"
+SOURCE_EXT = ".iol"
 TOKEN_EXT = ".tkn"
 
 

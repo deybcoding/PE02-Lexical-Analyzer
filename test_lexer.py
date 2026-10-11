@@ -4,8 +4,6 @@ Unit tests for the Lexer Core (Member 1 Deliverable).
 
 import unittest
 from lexer import (
-    Token,
-    Lexer,
     tokenize,
     INT_LIT,
     IDENT,
@@ -132,6 +130,29 @@ class TestLexer(unittest.TestCase):
         tokens = tokenize("CUSTOM_CMD normalIdent", keywords=custom_kw)
         self.assertEqual(tokens[0].name, "CUSTOM_CMD")
         self.assertEqual(tokens[1].name, IDENT)
+
+    def test_iol_keywords(self):
+        words = "IOL LOI INT STR IS INTO BEG PRINT NEWLN ADD SUB MULT DIV MOD"
+        for tok in tokenize(words):
+            self.assertIn(tok.lexeme, KEYWORDS)
+            self.assertEqual(tok.name, tok.lexeme)
+
+    def test_keywords_are_case_sensitive(self):
+        self.assertEqual([t.name for t in tokenize("print Print")], [IDENT, IDENT])
+
+    def test_sample_iol_program(self):
+        code = "IOL\n  INT num IS 0\n  BEG num\n  INTO num IS MULT num 2\n  PRINT num\nLOI"
+        self.assertEqual(
+            [t.name for t in tokenize(code)],
+            [
+                "IOL",
+                "INT", IDENT, "IS", INT_LIT,
+                "BEG", IDENT,
+                "INTO", IDENT, "IS", "MULT", IDENT, INT_LIT,
+                "PRINT", IDENT,
+                "LOI",
+            ],
+        )
 
 
 if __name__ == "__main__":

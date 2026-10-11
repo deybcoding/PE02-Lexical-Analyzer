@@ -17,11 +17,17 @@ VARIABLE_MODULE = "variable_table"
 Formatter = Callable[[List[Token]], str]
 ErrorCollector = Callable[[List[Token]], List[Token]]
 ErrorMessage = Callable[[Token], str]
+ErrorSummary = Callable[[List[Token]], str]
 VariableBuilder = Callable[[List[Token]], List[Tuple[str, str]]]
 
 
 def default_format_tokens(tokens: List[Token]) -> str:
-    return "".join(f"{t.name} {t.lexeme}\n" for t in tokens)
+    if not tokens:
+        return ""
+    lines: List[List[str]] = [[] for _ in range(tokens[-1].line)]
+    for t in tokens:
+        lines[t.line - 1].append(t.name)
+    return "\n".join(" ".join(names) for names in lines) + "\n"
 
 
 def default_collect_errors(tokens: List[Token]) -> List[Token]:
@@ -30,6 +36,13 @@ def default_collect_errors(tokens: List[Token]) -> List[Token]:
 
 def default_format_error(token: Token) -> str:
     return f"Lexical Error: Unknown word '{token.lexeme}' at line {token.line}"
+
+
+def default_error_summary(tokens: List[Token]) -> str:
+    count = len(default_collect_errors(tokens))
+    if count == 0:
+        return "No lexical errors found."
+    return f"{count} lexical error(s) found."
 
 
 def default_build_variable_table(tokens: List[Token]) -> List[Tuple[str, str]]:
@@ -52,12 +65,14 @@ class CompileResult:
         errors: List[str],
         variables: List[Tuple[str, str]],
         tkn_path: Optional[str],
+        summary: str = "",
     ):
         self.tokens: List[Token] = tokens
         self.tokenized_code: str = tokenized_code
         self.errors: List[str] = errors
         self.variables: List[Tuple[str, str]] = variables
         self.tkn_path: Optional[str] = tkn_path
+        self.summary: str = summary
 
     @property
     def has_errors(self) -> bool:
@@ -70,6 +85,7 @@ class CompileResult:
             "errors": list(self.errors),
             "variables": list(self.variables),
             "tkn_path": self.tkn_path,
+            "summary": self.summary,
         }
 
     def __repr__(self) -> str:
@@ -91,6 +107,7 @@ class CompilerController:
         collect_errors: Optional[ErrorCollector] = None,
         format_error: Optional[ErrorMessage] = None,
         build_variable_table: Optional[VariableBuilder] = None,
+        error_summary: Optional[ErrorSummary] = None,
     ):
         self.format_tokens: Formatter = format_tokens or load_module_function(
             FORMATTER_MODULE, "format_tokens", default_format_tokens
@@ -100,6 +117,9 @@ class CompilerController:
         )
         self.format_error: ErrorMessage = format_error or load_module_function(
             ERROR_MODULE, "format_error", default_format_error
+        )
+        self.error_summary: ErrorSummary = error_summary or load_module_function(
+            ERROR_MODULE, "error_summary", default_error_summary
         )
         self.build_variable_table: VariableBuilder = (
             build_variable_table
@@ -144,13 +164,14 @@ class CompilerController:
         tokens = tokenize(source)
         tokenized_code = self.format_tokens(tokens)
         errors = [self.format_error(t) for t in self.collect_errors(tokens)]
+        summary = self.error_summary(tokens)
         variables = list(self.build_variable_table(tokens))
 
         target = tkn_path or self.default_tkn_path()
         self.tkn_path = file_io.save_tokens(target, tokenized_code) if target else None
 
         self.last_result = CompileResult(
-            tokens, tokenized_code, errors, variables, self.tkn_path
+            tokens, tokenized_code, errors, variables, self.tkn_path, summary
         )
         return self.last_result
 

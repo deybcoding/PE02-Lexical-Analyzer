@@ -21,15 +21,15 @@ class TestFileIO(unittest.TestCase):
 
     def test_load_source_missing_file(self):
         with self.assertRaises(file_io.FileIOError):
-            file_io.load_source(os.path.join(self.dir, "missing.io"))
+            file_io.load_source(os.path.join(self.dir, "missing.iol"))
 
     def test_save_and_load_source_roundtrip(self):
         path = file_io.save_source(os.path.join(self.dir, "prog"), "DEFINE x\r\n")
-        self.assertTrue(path.endswith(".io"))
+        self.assertTrue(path.endswith(".iol"))
         self.assertEqual(file_io.load_source(path), "DEFINE x\r\n")
 
     def test_token_path_for(self):
-        self.assertEqual(file_io.token_path_for("/a/b/prog.io"), "/a/b/prog.tkn")
+        self.assertEqual(file_io.token_path_for("/a/b/prog.iol"), "/a/b/prog.tkn")
 
     def test_save_tokens_appends_extension(self):
         path = file_io.save_tokens(os.path.join(self.dir, "out"), "IDENT x\n")

@@ -7,15 +7,16 @@ from controller import (
     CompilerController,
     CompileResult,
     compile_source,
+    default_format_tokens,
 )
-from lexer import ERR_LEX
+from lexer import ERR_LEX, tokenize
 
 
 class TestController(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
-        self.src = os.path.join(self.dir, "sample.io")
+        self.src = os.path.join(self.dir, "sample.iol")
         with open(self.src, "w") as f:
             f.write("DEFINE x AS INT\nx IS 5 @\n")
 
@@ -97,6 +98,21 @@ class TestController(unittest.TestCase):
         self.assertIn("'$$'", result.errors[1])
         self.assertIn("line 2", result.errors[1])
 
+    def test_default_format_tokens_keeps_line_structure(self):
+        code = "IOL\n  INT x IS 5\n\n  PRINT x @\nLOI"
+        self.assertEqual(
+            default_format_tokens(tokenize(code)),
+            "IOL\nINT IDENT IS INT_LIT\n\nPRINT IDENT ERR_LEX\nLOI\n",
+        )
+        self.assertEqual(default_format_tokens([]), "")
+
+    def test_compile_result_has_summary(self):
+        c = CompilerController()
+        self.assertEqual(c.compile_code("INT x").summary, "No lexical errors found.")
+        self.assertEqual(
+            c.compile_code("INT x @ $").summary, "2 lexical error(s) found."
+        )
+
     def test_compile_source_helper(self):
         result = compile_source("DEFINE x\n@")
         self.assertIsInstance(result, CompileResult)
@@ -109,7 +125,7 @@ class TestController(unittest.TestCase):
         with self.assertRaises(file_io.FileIOError):
             c.save_file("x")
         saved = c.save_file("x", os.path.join(self.dir, "new"))
-        self.assertTrue(saved.endswith("new.io"))
+        self.assertTrue(saved.endswith("new.iol"))
         self.assertEqual(c.source_path, saved)
 
 
