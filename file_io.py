@@ -2,6 +2,7 @@ import os
 
 SOURCE_EXT = ".iol"
 TOKEN_EXT = ".tkn"
+DEFAULT_BASENAME = "untitled"
 
 
 class FileIOError(Exception):
@@ -31,6 +32,15 @@ def save_source(path: str, source: str) -> str:
     except OSError as e:
         raise FileIOError(f"Could not save {path}: {e}") from e
     return path
+
+
+def default_source_path(directory: str) -> str:
+    candidate = os.path.join(directory, DEFAULT_BASENAME + SOURCE_EXT)
+    n = 1
+    while os.path.exists(candidate):
+        candidate = os.path.join(directory, f"{DEFAULT_BASENAME}{n}{SOURCE_EXT}")
+        n += 1
+    return candidate
 
 
 def token_path_for(source_path: str) -> str:

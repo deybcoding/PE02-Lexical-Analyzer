@@ -1,4 +1,5 @@
 import importlib
+import os
 from typing import Callable, List, Optional, Tuple
 
 import file_io
@@ -6,6 +7,8 @@ from lexer import ERR_LEX, Token, tokenize
 
 NEW_FILE = "New File"
 OPEN_FILE = "Open File"
+SAVE_FILE = "Save"
+SAVE_FILE_AS = "Save As"
 COMPILE_CODE = "Compile Code"
 SHOW_TOKENIZED_CODE = "Show Tokenized Code"
 EXIT = "Exit"
@@ -108,6 +111,7 @@ class CompilerController:
         format_error: Optional[ErrorMessage] = None,
         build_variable_table: Optional[VariableBuilder] = None,
         error_summary: Optional[ErrorSummary] = None,
+        work_dir: Optional[str] = None,
     ):
         self.format_tokens: Formatter = format_tokens or load_module_function(
             FORMATTER_MODULE, "format_tokens", default_format_tokens
@@ -127,9 +131,12 @@ class CompilerController:
                 VARIABLE_MODULE, "build_variable_table", default_build_variable_table
             )
         )
+        self.work_dir: Optional[str] = work_dir
         self.source_path: Optional[str] = None
+        self.default_path: Optional[str] = None
         self.tkn_path: Optional[str] = None
         self.last_result: Optional[CompileResult] = None
+        self.new_file()
 
     def _reset(self) -> None:
         self.tkn_path = None
@@ -137,26 +144,42 @@ class CompilerController:
 
     def new_file(self) -> str:
         self.source_path = None
+        self.default_path = (
+            file_io.default_source_path(self.work_dir) if self.work_dir else None
+        )
         self._reset()
         return ""
+
+    @property
+    def file_name(self) -> str:
+        path = self.source_path or self.default_path
+        if path is None:
+            return file_io.DEFAULT_BASENAME + file_io.SOURCE_EXT
+        return os.path.basename(path)
 
     def open_file(self, path: str) -> str:
         source = file_io.load_source(path)
         self.source_path = path
+        self.default_path = None
         self._reset()
         return source
 
-    def save_file(self, source: str, path: Optional[str] = None) -> str:
-        target = path or self.source_path
+    def save_file(self, source: str) -> str:
+        target = self.source_path or self.default_path
         if target is None:
             raise file_io.FileIOError("No file path to save to")
-        self.source_path = file_io.save_source(target, source)
+        return self.save_file_as(source, target)
+
+    def save_file_as(self, source: str, path: str) -> str:
+        self.source_path = file_io.save_source(path, source)
+        self.default_path = None
         return self.source_path
 
     def default_tkn_path(self) -> Optional[str]:
-        if self.source_path is None:
+        path = self.source_path or self.default_path
+        if path is None:
             return None
-        return file_io.token_path_for(self.source_path)
+        return file_io.token_path_for(path)
 
     def compile_code(
         self, source: str, tkn_path: Optional[str] = None

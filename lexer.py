@@ -38,7 +38,6 @@ DEFAULT_KEYWORDS: Set[str] = {
     "MULT",
     "DIV",
     "MOD",
-    "DEFINE",
 }
 
 # Active keyword set (can be extended or customized if needed)
@@ -56,6 +55,14 @@ def add_keywords(*words: str) -> None:
     global KEYWORDS
     for word in words:
         KEYWORDS.add(word)
+
+
+def is_letter(char: Optional[str]) -> bool:
+    return char is not None and ("a" <= char <= "z" or "A" <= char <= "Z")
+
+
+def is_digit(char: Optional[str]) -> bool:
+    return char is not None and "0" <= char <= "9"
 
 
 # ==========================================
@@ -155,31 +162,40 @@ class Lexer:
 
         return char
 
-    def _scan_number(self, start_line: int, start_col: int) -> Token:
-        """
-        Scans an integer literal. If digits are immediately followed by
-        alphabetic characters (e.g. '123abc'), it is scanned as an ERR_LEX.
-        """
-        lexeme_chars = []
-        while self._peek() is not None and self._peek().isdigit():
+    def _is_delimiter(self, char: Optional[str]) -> bool:
+        return char is None or char.isspace()
+
+    def _consume_rest_of_word(self, lexeme_chars: List[str]) -> None:
+        while not self._is_delimiter(self._peek()):
             lexeme_chars.append(self._advance())
 
-        # Check if invalid identifier format (starting with digits followed by letters/underscore)
-        next_char = self._peek()
-        if next_char is not None and (next_char.isalpha() or next_char == "_"):
-            while self._peek() is not None and (self._peek().isalnum() or self._peek() == "_"):
-                lexeme_chars.append(self._advance())
+    def _scan_number(self, start_line: int, start_col: int) -> Token:
+        """
+        Scans an integer literal. If the digits are not immediately followed by
+        whitespace (e.g. '123abc'), the whole word is scanned as an ERR_LEX.
+        """
+        lexeme_chars = []
+        while is_digit(self._peek()):
+            lexeme_chars.append(self._advance())
+
+        if not self._is_delimiter(self._peek()):
+            self._consume_rest_of_word(lexeme_chars)
             return Token(ERR_LEX, "".join(lexeme_chars), start_line, start_col)
 
         return Token(INT_LIT, "".join(lexeme_chars), start_line, start_col)
 
     def _scan_identifier_or_keyword(self, start_line: int, start_col: int) -> Token:
         """
-        Scans an identifier or keyword starting with a letter or underscore.
+        Scans an identifier or keyword: a letter followed by letters or digits.
+        A word containing any other character is scanned as an ERR_LEX.
         """
         lexeme_chars = []
-        while self._peek() is not None and (self._peek().isalnum() or self._peek() == "_"):
+        while is_letter(self._peek()) or is_digit(self._peek()):
             lexeme_chars.append(self._advance())
+
+        if not self._is_delimiter(self._peek()):
+            self._consume_rest_of_word(lexeme_chars)
+            return Token(ERR_LEX, "".join(lexeme_chars), start_line, start_col)
 
         lexeme = "".join(lexeme_chars)
 
@@ -191,17 +207,10 @@ class Lexer:
 
     def _scan_error(self, start_line: int, start_col: int) -> Token:
         """
-        Scans unrecognized characters as an ERR_LEX token.
-        Collects consecutive non-whitespace invalid symbols.
+        Scans an unknown word (up to the next whitespace) as an ERR_LEX token.
         """
         lexeme_chars = []
-        while (
-            self._peek() is not None
-            and not self._peek().isspace()
-            and not (self._peek().isalnum() or self._peek() == "_")
-        ):
-            lexeme_chars.append(self._advance())
-
+        self._consume_rest_of_word(lexeme_chars)
         return Token(ERR_LEX, "".join(lexeme_chars), start_line, start_col)
 
     def tokenize(self) -> List[Token]:
@@ -223,10 +232,10 @@ class Lexer:
             start_col = self.column
 
             # Integer literals
-            if char.isdigit():
+            if is_digit(char):
                 tokens.append(self._scan_number(start_line, start_col))
             # Identifiers or keywords
-            elif char.isalpha() or char == "_":
+            elif is_letter(char):
                 tokens.append(self._scan_identifier_or_keyword(start_line, start_col))
             # Unknown / Error lexemes
             else:

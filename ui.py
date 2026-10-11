@@ -6,7 +6,7 @@ import file_io
 import controller as ctl
 from controller import CompilerController
 
-APP_TITLE = "CMSC 129 - PE02 Lexical Analyzer"
+IDE_NAME = "IOL IDE"
 SOURCE_TYPES = [("IOL source files", "*" + file_io.SOURCE_EXT), ("All files", "*.*")]
 TOKEN_TYPES = [("Token files", "*" + file_io.TOKEN_EXT), ("All files", "*.*")]
 MONO = ("Courier", 12)
@@ -16,6 +16,9 @@ class CompilerUI:
     def __init__(self, root: tk.Tk, controller: CompilerController):
         self.root = root
         self.controller = controller
+        self.mod = (
+            "Command" if root.tk.call("tk", "windowingsystem") == "aqua" else "Control"
+        )
         self._build()
         self._bind_shortcuts()
         self._refresh_title()
@@ -27,30 +30,38 @@ class CompilerUI:
 
         toolbar = ttk.Frame(self.root, padding=4)
         toolbar.pack(side=tk.TOP, fill=tk.X)
-        actions = [
-            (ctl.NEW_FILE, self.new_file),
-            (ctl.OPEN_FILE, self.open_file),
-            (ctl.COMPILE_CODE, self.compile_code),
-            (ctl.SHOW_TOKENIZED_CODE, self.show_tokenized_code),
-            (ctl.EXIT, self.exit_app),
+        self.file_actions = [
+            (ctl.NEW_FILE, self.new_file, f"<{self.mod}-n>", f"{self.mod}+N"),
+            (ctl.OPEN_FILE, self.open_file, f"<{self.mod}-o>", f"{self.mod}+O"),
+            (ctl.SAVE_FILE, self.save_file, f"<{self.mod}-s>", f"{self.mod}+S"),
+            (
+                ctl.SAVE_FILE_AS,
+                self.save_file_as,
+                f"<{self.mod}-Shift-S>",
+                f"{self.mod}+Shift+S",
+            ),
         ]
-        for label, command in actions:
+        self.compile_actions = [
+            (ctl.COMPILE_CODE, self.compile_code, "<F5>", "F5"),
+            (ctl.SHOW_TOKENIZED_CODE, self.show_tokenized_code, "<F6>", "F6"),
+        ]
+        for label, command, _, _ in self.file_actions + self.compile_actions:
             ttk.Button(toolbar, text=label, command=command).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text=ctl.EXIT, command=self.exit_app).pack(
+            side=tk.RIGHT, padx=2
+        )
 
         menubar = tk.Menu(self.root)
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label=ctl.NEW_FILE, command=self.new_file)
-        file_menu.add_command(label=ctl.OPEN_FILE, command=self.open_file)
-        file_menu.add_command(label="Save File", command=self.save_file)
+        for label, command, _, accel in self.file_actions:
+            file_menu.add_command(label=label, command=command, accelerator=accel)
         file_menu.add_separator()
         file_menu.add_command(label=ctl.EXIT, command=self.exit_app)
         menubar.add_cascade(label="File", menu=file_menu)
-        run_menu = tk.Menu(menubar, tearoff=0)
-        run_menu.add_command(label=ctl.COMPILE_CODE, command=self.compile_code)
-        run_menu.add_command(
-            label=ctl.SHOW_TOKENIZED_CODE, command=self.show_tokenized_code
-        )
-        menubar.add_cascade(label="Run", menu=run_menu)
+        compile_menu = tk.Menu(menubar, tearoff=0)
+        for label, command, _, accel in self.compile_actions:
+            compile_menu.add_command(label=label, command=command, accelerator=accel)
+        menubar.add_cascade(label="Compile", menu=compile_menu)
         self.root.config(menu=menubar)
 
         vertical = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
@@ -62,7 +73,8 @@ class CompilerUI:
         self.tabs = ttk.Notebook(horizontal)
         editor_frame = ttk.Frame(self.tabs, padding=2)
         self.editor = self._scrolled_text(editor_frame, undo=True)
-        self.tabs.add(editor_frame, text="Editor")
+        self.editor.bind("<<Modified>>", lambda _: self._refresh_title())
+        self.tabs.add(editor_frame, text=self.controller.file_name)
         self.tokens_frame = ttk.Frame(self.tabs, padding=2)
         self.tokens_view = self._scrolled_text(self.tokens_frame, state=tk.DISABLED)
         self.tabs.add(self.tokens_frame, text="Tokenized Code")
@@ -101,21 +113,14 @@ class CompilerUI:
         return text
 
     def _bind_shortcuts(self) -> None:
-        mod = (
-            "Command"
-            if self.root.tk.call("tk", "windowingsystem") == "aqua"
-            else "Control"
-        )
-        self.root.bind(f"<{mod}-n>", lambda _: self.new_file())
-        self.root.bind(f"<{mod}-o>", lambda _: self.open_file())
-        self.root.bind(f"<{mod}-s>", lambda _: self.save_file())
-        self.root.bind("<F5>", lambda _: self.compile_code())
-        self.root.bind("<F6>", lambda _: self.show_tokenized_code())
+        for _, command, sequence, _ in self.file_actions + self.compile_actions:
+            self.root.bind(sequence, lambda _, c=command: c())
 
     def _refresh_title(self) -> None:
-        path = self.controller.source_path
-        name = os.path.basename(path) if path else "Untitled"
-        self.root.title(f"{name} - {APP_TITLE}")
+        name = self.controller.file_name
+        dirty = "*" if self.editor.edit_modified() else ""
+        self.tabs.tab(0, text=f"{name}{dirty}")
+        self.root.title(f"{IDE_NAME} - {name}{dirty}")
 
     def _editor_source(self) -> str:
         return self.editor.get("1.0", "end-1c")
@@ -187,24 +192,36 @@ class CompilerUI:
         self._refresh_title()
         self._log(f"Opened {path}")
 
-    def save_file(self) -> None:
-        path = self.controller.source_path
-        if path is None:
-            path = filedialog.asksaveasfilename(
-                title="Save .iol file",
-                defaultextension=file_io.SOURCE_EXT,
-                filetypes=SOURCE_TYPES,
-            )
-            if not path:
-                return
-        try:
-            saved = self.controller.save_file(self._editor_source(), path)
-        except file_io.FileIOError as e:
-            messagebox.showerror("Save File", str(e))
-            return
+    def _after_save(self, saved: str) -> None:
         self.editor.edit_modified(False)
         self._refresh_title()
         self._log(f"Saved {saved}")
+
+    def save_file(self) -> None:
+        try:
+            saved = self.controller.save_file(self._editor_source())
+        except file_io.FileIOError as e:
+            messagebox.showerror(ctl.SAVE_FILE, str(e))
+            return
+        self._after_save(saved)
+
+    def save_file_as(self) -> None:
+        current = self.controller.source_path or self.controller.default_path
+        path = filedialog.asksaveasfilename(
+            title="Save .iol file as",
+            defaultextension=file_io.SOURCE_EXT,
+            filetypes=SOURCE_TYPES,
+            initialdir=os.path.dirname(current) if current else None,
+            initialfile=self.controller.file_name,
+        )
+        if not path:
+            return
+        try:
+            saved = self.controller.save_file_as(self._editor_source(), path)
+        except file_io.FileIOError as e:
+            messagebox.showerror(ctl.SAVE_FILE_AS, str(e))
+            return
+        self._after_save(saved)
 
     def compile_code(self) -> None:
         tkn_path = self.controller.default_tkn_path()
@@ -255,5 +272,5 @@ class CompilerUI:
 
 def run() -> None:
     root = tk.Tk()
-    CompilerUI(root, CompilerController())
+    CompilerUI(root, CompilerController(work_dir=os.getcwd()))
     root.mainloop()

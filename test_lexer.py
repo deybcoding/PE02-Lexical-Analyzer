@@ -35,13 +35,13 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokens[2].column, 6)
 
     def test_keywords(self):
-        code = "DEFINE INTO IS"
+        code = "INT INTO IS"
         tokens = tokenize(code)
         self.assertEqual(len(tokens), 3)
 
         # Keyword token name must match the keyword itself
-        self.assertEqual(tokens[0].name, "DEFINE")
-        self.assertEqual(tokens[0].lexeme, "DEFINE")
+        self.assertEqual(tokens[0].name, "INT")
+        self.assertEqual(tokens[0].lexeme, "INT")
 
         self.assertEqual(tokens[1].name, "INTO")
         self.assertEqual(tokens[1].lexeme, "INTO")
@@ -50,11 +50,11 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokens[2].lexeme, "IS")
 
     def test_identifiers(self):
-        code = "myVar count _temp x1"
+        code = "myVar count temp x1"
         tokens = tokenize(code)
         self.assertEqual(len(tokens), 4)
 
-        for tok, lex in zip(tokens, ["myVar", "count", "_temp", "x1"]):
+        for tok, lex in zip(tokens, ["myVar", "count", "temp", "x1"]):
             self.assertEqual(tok.name, IDENT)
             self.assertEqual(tok.lexeme, lex)
 
@@ -77,18 +77,18 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokens[3].lexeme, "$")
 
     def test_line_and_column_tracking(self):
-        code = "DEFINE num\nIS 42\n  ERR@\nINTO result"
+        code = "INT num\nIS 42\n  ERR @\nINTO result"
         tokens = tokenize(code)
 
-        # Line 1: DEFINE (1, 1), num (1, 8)
-        self.assertEqual(tokens[0].name, "DEFINE")
+        # Line 1: INT (1, 1), num (1, 5)
+        self.assertEqual(tokens[0].name, "INT")
         self.assertEqual(tokens[0].line, 1)
         self.assertEqual(tokens[0].column, 1)
 
         self.assertEqual(tokens[1].name, IDENT)
         self.assertEqual(tokens[1].lexeme, "num")
         self.assertEqual(tokens[1].line, 1)
-        self.assertEqual(tokens[1].column, 8)
+        self.assertEqual(tokens[1].column, 5)
 
         # Line 2: IS (2, 1), 42 (2, 4)
         self.assertEqual(tokens[2].name, "IS")
@@ -100,7 +100,7 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokens[3].line, 2)
         self.assertEqual(tokens[3].column, 4)
 
-        # Line 3: ERR (3, 3), @ (3, 6)
+        # Line 3: ERR (3, 3), @ (3, 7)
         self.assertEqual(tokens[4].name, IDENT)
         self.assertEqual(tokens[4].lexeme, "ERR")
         self.assertEqual(tokens[4].line, 3)
@@ -109,7 +109,7 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokens[5].name, ERR_LEX)
         self.assertEqual(tokens[5].lexeme, "@")
         self.assertEqual(tokens[5].line, 3)
-        self.assertEqual(tokens[5].column, 6)
+        self.assertEqual(tokens[5].column, 7)
 
         # Line 4: INTO (4, 1), result (4, 6)
         self.assertEqual(tokens[6].name, "INTO")
@@ -126,9 +126,9 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokenize("   \t\n\r\n   "), [])
 
     def test_custom_keywords(self):
-        custom_kw = {"CUSTOM_CMD", "SPECIAL"}
-        tokens = tokenize("CUSTOM_CMD normalIdent", keywords=custom_kw)
-        self.assertEqual(tokens[0].name, "CUSTOM_CMD")
+        custom_kw = {"CUSTOM", "SPECIAL"}
+        tokens = tokenize("CUSTOM normalIdent", keywords=custom_kw)
+        self.assertEqual(tokens[0].name, "CUSTOM")
         self.assertEqual(tokens[1].name, IDENT)
 
     def test_iol_keywords(self):
@@ -153,6 +153,57 @@ class TestLexer(unittest.TestCase):
                 "LOI",
             ],
         )
+
+    def test_define_is_not_an_iol_keyword(self):
+        self.assertEqual(tokenize("DEFINE")[0].name, IDENT)
+
+    def test_underscore_is_not_allowed_in_identifiers(self):
+        for word in ["_temp", "x_1", "my_var"]:
+            tokens = tokenize(word)
+            self.assertEqual(len(tokens), 1)
+            self.assertEqual(tokens[0].name, ERR_LEX)
+            self.assertEqual(tokens[0].lexeme, word)
+
+    def test_unknown_word_is_one_error_lexeme(self):
+        tokens = tokenize("INT x@ IS 5 abc$def 12#")
+        self.assertEqual(
+            [(t.name, t.lexeme) for t in tokens],
+            [
+                ("INT", "INT"),
+                (ERR_LEX, "x@"),
+                ("IS", "IS"),
+                (INT_LIT, "5"),
+                (ERR_LEX, "abc$def"),
+                (ERR_LEX, "12#"),
+            ],
+        )
+        self.assertEqual(tokens[4].column, 13)
+
+    def test_non_ascii_letters_and_digits_are_errors(self):
+        self.assertEqual([t.name for t in tokenize("caf\u00e9 \u00b2")], [ERR_LEX, ERR_LEX])
+
+    def test_spec_sample_program(self):
+        code = (
+            "IOL\n"
+            "\tINT num IS 0 INT res IS 0\n"
+            "\tSTR msg1 STR msg2 STR msg3\n"
+            "\tBEG msg1 BEG msg2\n"
+            "\tBEG msg3\n"
+            "\tNEWLN PRINT msg1\n"
+            "\tNEWLN\n"
+            "\tINTO res IS MULT num num\n"
+            "\tPRINT msg2\n"
+            "\tPRINT MULT num 2\n"
+            "\tNEWLN\n"
+            "\tPRINT msg3\n"
+            "\tPRINT res\n"
+            "LOI\n"
+        )
+        tokens = tokenize(code)
+        self.assertNotIn(ERR_LEX, [t.name for t in tokens])
+        self.assertEqual(tokens[0].name, "IOL")
+        self.assertEqual(tokens[-1].name, "LOI")
+        self.assertEqual(tokens[-1].line, 14)
 
 
 if __name__ == "__main__":

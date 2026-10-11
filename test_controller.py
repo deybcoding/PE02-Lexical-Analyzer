@@ -18,14 +18,14 @@ class TestController(unittest.TestCase):
         self.dir = self.tmp.name
         self.src = os.path.join(self.dir, "sample.iol")
         with open(self.src, "w") as f:
-            f.write("DEFINE x AS INT\nx IS 5 @\n")
+            f.write("IOL\nINT x IS 5 @\nLOI\n")
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_open_file_loads_source(self):
         c = CompilerController()
-        self.assertEqual(c.open_file(self.src), "DEFINE x AS INT\nx IS 5 @\n")
+        self.assertEqual(c.open_file(self.src), "IOL\nINT x IS 5 @\nLOI\n")
         self.assertEqual(c.source_path, self.src)
 
     def test_new_file_clears_state(self):
@@ -120,13 +120,43 @@ class TestController(unittest.TestCase):
         self.assertTrue(result.has_errors)
         self.assertIsNone(result.tkn_path)
 
-    def test_save_file_requires_path(self):
+    def test_save_without_work_dir_requires_save_as(self):
         c = CompilerController()
         with self.assertRaises(file_io.FileIOError):
             c.save_file("x")
-        saved = c.save_file("x", os.path.join(self.dir, "new"))
+        saved = c.save_file_as("x", os.path.join(self.dir, "new"))
         self.assertTrue(saved.endswith("new.iol"))
         self.assertEqual(c.source_path, saved)
+
+    def test_new_file_uses_default_filename(self):
+        c = CompilerController(work_dir=self.dir)
+        self.assertEqual(c.file_name, "untitled.iol")
+        saved = c.save_file("IOL LOI")
+        self.assertEqual(saved, os.path.join(self.dir, "untitled.iol"))
+        self.assertEqual(file_io.load_source(saved), "IOL LOI")
+        c.new_file()
+        self.assertEqual(c.file_name, "untitled1.iol")
+
+    def test_save_opened_file_writes_same_file(self):
+        c = CompilerController(work_dir=self.dir)
+        c.open_file(self.src)
+        self.assertEqual(c.save_file("IOL LOI"), self.src)
+        self.assertEqual(file_io.load_source(self.src), "IOL LOI")
+
+    def test_save_as_switches_to_new_file(self):
+        c = CompilerController(work_dir=self.dir)
+        c.open_file(self.src)
+        other = c.save_file_as("IOL LOI", os.path.join(self.dir, "copy.iol"))
+        self.assertEqual(c.file_name, "copy.iol")
+        self.assertEqual(c.default_tkn_path(), os.path.join(self.dir, "copy.tkn"))
+        self.assertEqual(file_io.load_source(other), "IOL LOI")
+        self.assertNotEqual(file_io.load_source(self.src), "IOL LOI")
+
+    def test_compile_new_file_saves_default_tkn(self):
+        c = CompilerController(work_dir=self.dir)
+        result = c.compile_code("IOL LOI")
+        self.assertEqual(result.tkn_path, os.path.join(self.dir, "untitled.tkn"))
+        self.assertEqual(file_io.load_tokens(result.tkn_path), "IOL LOI\n")
 
 
 if __name__ == "__main__":

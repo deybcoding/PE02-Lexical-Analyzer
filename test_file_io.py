@@ -28,6 +28,15 @@ class TestFileIO(unittest.TestCase):
         self.assertTrue(path.endswith(".iol"))
         self.assertEqual(file_io.load_source(path), "DEFINE x\r\n")
 
+    def test_default_source_path_is_unique(self):
+        first = file_io.default_source_path(self.dir)
+        self.assertEqual(first, os.path.join(self.dir, "untitled.iol"))
+        open(first, "w").close()
+        self.assertEqual(
+            file_io.default_source_path(self.dir),
+            os.path.join(self.dir, "untitled1.iol"),
+        )
+
     def test_token_path_for(self):
         self.assertEqual(file_io.token_path_for("/a/b/prog.iol"), "/a/b/prog.tkn")
 
