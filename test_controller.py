@@ -17,7 +17,7 @@ class TestController(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
         self.src = os.path.join(self.dir, "sample.iol")
-        with open(self.src, "w") as f:
+        with open(self.src, "w", newline="\n") as f:
             f.write("IOL\nINT x IS 5 @\nLOI\n")
 
     def tearDown(self):
